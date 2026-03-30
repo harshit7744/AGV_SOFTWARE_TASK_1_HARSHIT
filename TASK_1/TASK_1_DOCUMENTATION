@@ -1,0 +1,134 @@
+SOFTWARE-TASK-1
+SUBTASK-1, APPLICATION OF LK ON A PORTION OF VIDEO
+(HARSHIT RANA, 25CS10016)
+BRIEF THEORY:
+I applied Lucas Kanade with pyramids on a portion of a video to track features, I also added some new function and transformation for removing noise and smoother tracking.
+
+Lucas Kanade/Pyramids:
+Lucas Kanade is an optical flow algorithm which uses a differential method for detecting the motion of objects in consecutive images.
+Key assumptions of lucas kanade is:
+●	The core assumption of the lucas kanade algorithm is that the intensity of a feature/object does not significantly change between two consecutive frames. 
+●	Another assumption of lucas kanade is that the objects that have been traced are not moving at high speed. Or we can say that lucas kanade best works on slow moving objects. 
+
+
+
+
+
+These two equations fundamentally drive the algorithms.
+Since for a given pixel we have two unknown (Vx and Vy) and only one variable, we bring another assumption.
+
+We assume that optical flow(Vx and Vy vectors) are the same for a patch of points. This provides us with the given linear equations.
+
+
+
+
+
+
+From here we get the closed form solution,
+
+ABOUT THE CODE:
+●	I firstly selected the frames on which I have applied the algorithm, the function “frame_generator” does this work. The starting frame is frame 900 and ending frame is 1500.
+
+●	In each frame, I applied gaussian transformation to smoothen the pixel intensity distribution and reduce noise. The function “gaussian_weights” does this.
+
+●	The algorithm uses Pyramids to tackle fast moving objects, since lucas kanade alone can not effectively track fast moving objects. By progressively downsampling the image (build_pyramid function), large pixel jumps in the original video become tiny, mathematically manageable shifts at the lowest resolution. The Pyramid depth is 3. 
+.
+●	Finally the “lk_single_level” function calculates the gradient for each frame by vectorisation.
+ 
+●	To focus exclusively on moving subjects, the pipeline uses a MOG2 background subtractor to generate a foreground mask, which is refined by morphological operations. Feature detection is restricted to this active mask, completely ignoring static backgrounds. To replace lost or drifting points, new features are dynamically added every three frames up to a set memory limit.
+
+●	For detecting the feature the algorithm used the Shi-Tomasi method, which distinguishes features on the basis of intensity gradient. There was a maximum limit to the number of features that are to be tracked, it was set to 200 features. 
+
+CHALLENGES FACED AND SOLUTIONS:
+●	I applied parameter tuning on certain variables such, Quality level(Shi-Tomasi function), Maximum features, NUM_LEVELS(Pyramid depth). These were the crucial parameters that were to be tuned.
+
+●	In the start of the video initially the Shi-Tomasi was detecting various points on the wall(as the background had various intensity gradients). I used the MOG2 function to ignore the static background wall.
+●	What the MOG2 function does is, it tracks the history of a detected feature, if the feature looks like its normal state then it is a background feature. Otherwise it is a foreground feature. More elaborately if the mean square divided by variance is less than a threshold value then it is a foreground feature. Since the walls have various positions of sharp gradient, ignoring background features is necessary. 
+
+
+
+SUBTASK-2
+BRIEFING:
+I have implemented the Artificial potential field concept to navigate through an obstacle environment, the target created attractive vectors while the road boundaries and obstacles created repulsive vectors. 
+
+BRIEF THEORY:
+The Visual Potential Field method uses attractive and repulsive forces to drive the bot. The obstacles and road boundaries create repulsion vectors and the target creates attraction vectors. 
+
+
+
+
+
+FOE(focus of expansion) is the point where all the flow vector converges when the camera moves forward. The algorithm uses FOE for the estimation of TTC(time to collision). We evaluate FOE by solving a linear equation for a patch of features.
+
+
+
+
+
+
+
+
+
+TTC is the expected time in which the car/bot will hit the obstacle and is evaluated by taking the distance between FOE and obstacle.
+
+
+
+
+Finally I have used Lucas Kanade with pyramidal implementation to track the points as the camera proceeds. The lucas kanade algorithm first evaluated the optical flow vectors, from which we evaluated FOE, and then we evaluated TTC.
+
+We have also used a potential field for road boundaries, in this case the road repulsive force is given by  
+Here ROAD_GAIN is a constant(parameter). d_left and d_right are distances from the left and right corner. 
+
+
+ABOUT THE CODE:
+Discussing about some of the important parameter
+●	For the Shi-Tomasi feature detection function I have set the quality factor value to 0.05. Also the  maximum number of features to be detected have an upper limit of 100.
+
+●	I am using a 3 layered pyramid for lucas kanade with the functions “pyramidal_lk”, “_build_pyr” and “_lk_level” to handle it.
+
+●	I have set two parameters as ROAD_GAIN and OBSTACLE_GAIN, they are multiplied to the road force and the obstacle repulsion force.
+
+
+
+
+         FUNCTIONS:
+●	         The get_camera_axis function given the coordinate and orientation of the camera. I have added an draw_road_boundary function that draws a red line around the road boundary, this was done for the verification of whether the car is estimating the boundaries correctly or not.
+
+●	The get_strip_mask function looks for bright patches on the road and ignores them, these are likely the white strips on the road, since they cause a lot of noise, they are ignored in repulsion vector calculation.
+
+●	I included compute_foe and compute_ttc functions for FOE and TTC calculation.
+
+●	The repulsive_force function calculates the repulsive vector for the obstacles, it is a vector pointed from obstacle feature to the foe point. Rather than adding the repulsive force for each and every obstacle feature, the algorithm chooses the obstacle feature with minimum TTC and uses it for force calculation
+.
+●	The attractive_force function just takes the absolute distance between car position and target as the major motivation for calculating the attractive force.   
+   
+●	The road_force function applies the force according to road potential(F_world), additionally an F_image component with 30% weight is also added. If the car is heading at 20 degrees right but is currently at the centre of the road, then the F_world function will not create any repulsive force but here F_image will contribute in the repulsive force and hence giving an angular safety from road boundaries.
+
+
+
+●	Ultimately we have the desired_heading function which adds all the components(attractive, repulsive and road force) and applies a final coordinate transform. compute_speed looks for the lateral speed.
+
+FLOW IN MAIN FUNCTION:
+●	The main loop extracts fresh features after every 20 frames, Shi-Tomasi is used for feature detection and then pyramidal lucas kanade is applied, after that evaluation of FOE and TTC is done.
+●	The algorithm then chooses the obstacle with least TTC and considers its flow vector, also the road force and attractive force from the target is calculated. All these forces are added and a final coordinate transform leads to desired speed and heading angle.
+
+JUSTIFICATION FOR NON-CONVENTIONAL IMPLEMENTATIONS:
+
+SINGLE-OBSTACLE-REPULSION:
+●	Ideally the algorithm should add repulsion vectors for each obstacle detected, but due to poor obstacle detection there are a lot of obstacles that are creating noise. Hence I only choose the obstacle with the least TTC for repulsive force calculation. This idea worked to some extent and reduced the noise.
+
+ANGULAR COMPONENT OF ROAD FORCE
+●	The usual road force which is dependent just on the Euclidean distance of bot from the road boundary is not sufficient alone, when the car is at centre but at an non zero angle form the lateral axis(X-axis) then also it should have an repulsion from the road. The F_image variable with 30% weight takes care of it.
+
+BRIGHT STRIP EXCLUSION:
+●	Since the white strips on the road were causing a lot of noise by creating a false repulsion vector, I have ignored them for optical flow vector estimation. If there are bright pixels within a patch of 60 pixels, then ignore them because they are most likely road strips. This implementation also enhanced the performance.
+
+EXTRA URGENCY FACTOR FOR OBSTACLES:
+●	As I already mentioned that obstacle detection was not effective, so I added an extra urgency factor for the obstacles (urgency = 1/TTC). Now the obstacle force is proportional to 1/TTC^2 , this will increase the response towards nearer obstacles. Apart from this I also added a smoothing window of 5 frames, this basically takes average of forces among 5 frames, this was done for decreasing the noise. Both these implementations helped in reducing the noise.
+
+
+
+
+
+
+THE END
+
